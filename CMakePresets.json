@@ -24,7 +24,7 @@
     },
     {
       "name": "msvc-debug",
-      "displayName": "MSVC 2022 Debug (OpenCV 用这个)",
+      "displayName": "MSVC 2022 Debug (OpenCV 鐢ㄨ繖涓?",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/msvc-debug",
       "environment": {
@@ -35,7 +35,7 @@
       },
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_PREFIX_PATH": "D:/qt/6.10.2/msvc2022_64",
+        "CMAKE_PREFIX_PATH": "D:/qt/6.10.2/msvc2022_64;D:/opencv/build",
         "CMAKE_CXX_COMPILER": "cl",
         "CMAKE_MAKE_PROGRAM": "D:/qt/Tools/Ninja/ninja.exe"
       }
