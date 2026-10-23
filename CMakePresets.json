@@ -1,10 +1,6 @@
 {
   "version": 3,
-  "cmakeMinimumRequired": {
-    "major": 3,
-    "minor": 21,
-    "patch": 0
-  },
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
   "configurePresets": [
     {
       "name": "mingw-debug",
@@ -24,19 +20,38 @@
       "displayName": "MinGW Release",
       "inherits": "mingw-debug",
       "binaryDir": "${sourceDir}/build/mingw-release",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "msvc-debug",
+      "displayName": "MSVC 2022 Debug (OpenCV 用这个)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/msvc-debug",
+      "environment": {
+        "INCLUDE": "D:/vs/VC/Tools/MSVC/14.51.36231/include;D:/vs/VC/Tools/MSVC/14.51.36231/ATLMFC/include;D:/vs/VC/Auxiliary/VS/include;C:/Program Files (x86)/Windows Kits/10/include/10.0.26100.0/ucrt;C:/Program Files (x86)/Windows Kits/10//include/10.0.26100.0//um;C:/Program Files (x86)/Windows Kits/10//include/10.0.26100.0//shared;C:/Program Files (x86)/Windows Kits/10//include/10.0.26100.0//winrt;C:/Program Files (x86)/Windows Kits/10//include/10.0.26100.0//cppwinrt;C:/Program Files (x86)/Windows Kits/NETFXSDK/4.8/include/um",
+        "LIB": "D:/vs/VC/Tools/MSVC/14.51.36231/ATLMFC/lib/x64;D:/vs/VC/Tools/MSVC/14.51.36231/lib/x64;C:/Program Files (x86)/Windows Kits/NETFXSDK/4.8/lib/um/x64;C:/Program Files (x86)/Windows Kits/10/lib/10.0.26100.0/ucrt/x64;C:/Program Files (x86)/Windows Kits/10//lib/10.0.26100.0//um/x64",
+        "LIBPATH": "D:/vs/VC/Tools/MSVC/14.51.36231/ATLMFC/lib/x64;D:/vs/VC/Tools/MSVC/14.51.36231/lib/x64;D:/vs/VC/Tools/MSVC/14.51.36231/lib/x86/store/references;C:/Program Files (x86)/Windows Kits/10/UnionMetadata/10.0.26100.0;C:/Program Files (x86)/Windows Kits/10/References/10.0.26100.0;C:/Windows/Microsoft.NET/Framework64/v4.0.30319",
+        "PATH": "D:/vs/VC/Tools/MSVC/14.51.36231/bin/HostX64/x64;D:/vs/Common7/IDE/VC/VCPackages;D:/vs/Common7/IDE/CommonExtensions/Microsoft/TestWindow;D:/vs/Common7/IDE/CommonExtensions/Microsoft/TeamFoundation/Team Explorer;D:/vs/MSBuild/Current/bin/Roslyn;D:/vs/Common7/IDE/CommonExtensions/Microsoft/FSharp/Tools;D:/vs/Team Tools/DiagnosticsHub/Collector;D:/vs/Common7/IDE/Extensions/Microsoft/CodeCoverage.Console;C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0//x64;C:/Program Files (x86)/Windows Kits/10/bin//x64;D:/vs//MSBuild/Current/Bin/amd64;D:/vs/Common7/IDE/;D:/vs/Common7/Tools/;C:/Program Files (x86)/Windows Kits/8.1/Windows Performance Toolkit/;C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/;D:/vs/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin;D:/vs/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja;D:/vs/Common7/IDE/VC/Linux/bin/ConnectionManagerExe;D:/vs/VC/vcpkg;$penv{PATH}"
+      },
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_PREFIX_PATH": "D:/qt/6.10.2/msvc2022_64",
+        "CMAKE_CXX_COMPILER": "cl",
+        "CMAKE_MAKE_PROGRAM": "D:/qt/Tools/Ninja/ninja.exe"
       }
+    },
+    {
+      "name": "msvc-release",
+      "displayName": "MSVC 2022 Release",
+      "inherits": "msvc-debug",
+      "binaryDir": "${sourceDir}/build/msvc-release",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
     }
   ],
   "buildPresets": [
-    {
-      "name": "mingw-debug",
-      "configurePreset": "mingw-debug"
-    },
-    {
-      "name": "mingw-release",
-      "configurePreset": "mingw-release"
-    }
+    { "name": "mingw-debug", "configurePreset": "mingw-debug" },
+    { "name": "mingw-release", "configurePreset": "mingw-release" },
+    { "name": "msvc-debug", "configurePreset": "msvc-debug" },
+    { "name": "msvc-release", "configurePreset": "msvc-release" }
   ]
 }
