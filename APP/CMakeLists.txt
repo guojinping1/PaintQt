@@ -38,3 +38,6 @@ target_link_libraries(APP PRIVATE
     Qt6::Widgets
     Qt6::Svg                     # SVG 图标要靠它加载
 )
+
+# 有位图库时把 Qt 和 OpenCV 的运行时 DLL 拷到 exe 旁边，双击即可运行
+paintqt_deploy_runtime(APP)
