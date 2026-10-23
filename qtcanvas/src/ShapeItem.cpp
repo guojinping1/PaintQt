@@ -11,17 +11,18 @@
 
 namespace {
 
-// 把 draw::Shape 转成 QPainterPath。
+// 把图形转成 QPainterPath。
 // 用途：点选判定（shape()）和选中时的控制多边形提示。
-// 真正画图还是走 draw::renderShape + QtRenderer。
+// 真正画图走的是 m_object.render() → draw::renderShape + QtRenderer。
 QPainterPath pathOf(const draw::Shape& s)
 {
     QPainterPath p;
 
-    const int l  = std::min(s.x1, s.x2);
-    const int t  = std::min(s.y1, s.y2);
-    const int r  = std::max(s.x1, s.x2);
-    const int b  = std::max(s.y1, s.y2);
+    const int l = std::min(s.x1, s.x2);
+    const int t = std::min(s.y1, s.y2);
+    const int r = std::max(s.x1, s.x2);
+    const int b = std::max(s.y1, s.y2);
+
     const QRectF box(l, t, r - l, b - t);
 
     switch (s.type)
@@ -73,29 +74,32 @@ QPainterPath pathOf(const draw::Shape& s)
 } // namespace
 
 ShapeItem::ShapeItem(const draw::Shape& s, QGraphicsItem* parent)
-    : QGraphicsItem(parent), m_shape(s)
+    : QGraphicsItem(parent), m_object(s)
 {
-    // 可选中、可整体拖动；拖动时通知场景（用于状态栏刷新）
+    // 可选中、可整体拖动；拖动时通知场景
     setFlags(ItemIsSelectable | ItemIsMovable | ItemSendsGeometryChanges);
     setAcceptedMouseButtons(Qt::LeftButton);
 }
 
 void ShapeItem::setShape(const draw::Shape& s)
 {
+    // prepareGeometryChange 必须在改数据之前调，否则 QGraphicsScene 的
+    // BSP 索引会失效，表现为残影和点选错位
     prepareGeometryChange();
-    m_shape = s;
+    m_object.setShape(s);
     update();
 }
 
 QRectF ShapeItem::boundingRect() const
 {
-    const draw::Bounds b = draw::boundsOf(m_shape);
+    // 边界直接问 GameObject 要，ShapeItem 不重复算一遍
+    const draw::Bounds b = m_object.bounds();
 
     if (!b.valid)
         return QRectF(-1, -1, 2, 2);
 
     // 留出线宽和节点手柄的余量，否则手柄会被裁掉
-    const qreal m = kHandleRadius + std::max<qreal>(m_shape.width, 1.0) + 3.0;
+    const qreal m = kHandleRadius + std::max<qreal>(m_object.shape().width, 1.0) + 3.0;
 
     return QRectF(b.left - m,
                   b.top - m,
@@ -106,11 +110,11 @@ QRectF ShapeItem::boundingRect() const
 QPainterPath ShapeItem::shape() const
 {
     QPainterPathStroker stroker;
-    stroker.setWidth(std::max<qreal>(m_shape.width, 10.0));
+    stroker.setWidth(std::max<qreal>(m_object.shape().width, 10.0));
     stroker.setCapStyle(Qt::RoundCap);
     stroker.setJoinStyle(Qt::RoundJoin);
 
-    QPainterPath hit = stroker.createStroke(pathOf(m_shape));
+    QPainterPath hit = stroker.createStroke(pathOf(m_object.shape()));
 
     // 选中时把手柄也算进点选范围。
     // 贝塞尔的控制点离曲线很远，不加这段就拖不到。
@@ -128,16 +132,18 @@ void ShapeItem::paint(QPainter* p, const QStyleOptionGraphicsItem*, QWidget*)
     p->save();
     p->setRenderHint(QPainter::Antialiasing, true);
 
-    // 真正画图形：交给 draw 库，由 QtRenderer 落地成 QPainter 调用
+    // 画图形本体：交给 GameObject 的 render 接口，
+    // 由 DrawingObject → draw::renderShape → QtRenderer 一路落地成 QPainter 调用
     QtRenderer renderer(*p);
-    draw::renderShape(m_shape, renderer);
+    m_object.render(renderer);
 
     if (isSelected())
     {
         const QVector<QPointF> hs = handles();
+        const draw::Shape& s = m_object.shape();
 
         // 贝塞尔：画出控制多边形（起点→控制点1，控制点2→终点）
-        if (m_shape.type == draw::ShapeType::Bezier && hs.size() >= 4)
+        if (s.type == draw::ShapeType::Bezier && hs.size() >= 4)
         {
             QPen guide(QColor(0x90, 0xA4, 0xC0), 1.0, Qt::DashLine);
             p->setPen(guide);
@@ -168,7 +174,7 @@ QVector<QPointF> ShapeItem::handles() const
 {
     QVector<QPointF> out;
 
-    for (const draw::Point& q : draw::nodesOf(m_shape))
+    for (const draw::Point& q : draw::nodesOf(m_object.shape()))
         out << QPointF(q.x, q.y);
 
     return out;
@@ -191,8 +197,12 @@ void ShapeItem::setHandlePos(int index, const QPointF& p)
 {
     prepareGeometryChange();
 
-    if (draw::moveNode(m_shape, index, int(std::lround(p.x())), int(std::lround(p.y()))))
+    // 直接改 DrawingObject 里的 Shape —— moveNode 只关心数据，不关心对象
+    if (draw::moveNode(m_object.shape(), index,
+                       int(std::lround(p.x())), int(std::lround(p.y()))))
+    {
         update();
+    }
 }
 
 // ---------------- 鼠标交互 ----------------
