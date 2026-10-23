@@ -1,0 +1,9 @@
+# CMake / 编译产物
+build/
+CMakeUserPresets.json
+
+# 本机 IDE 配置（里面的路径是本机专用的，换机器没用）
+.vscode/
+
+# 其他
+*.user
