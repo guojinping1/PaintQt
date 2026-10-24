@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 # Qt 画布封装静态库
 #   ShapeItem   —— 继承 QGraphicsItem 的自定义图元（含节点拖拽编辑）
+#   BitmapItem  —— 位图图元（打开的图片 / 抠图结果）
 #   CanvasScene —— 场景，管工具状态和画图交互
 #   CanvasView  —— 视图，白纸 + 网格 + 缩放
 #
@@ -11,9 +12,11 @@ cmake_minimum_required(VERSION 3.16)
 add_library(qtcanvas STATIC
     include/QtRenderer.h
     include/ShapeItem.h
+    include/BitmapItem.h
     include/CanvasScene.h
     include/CanvasView.h
     src/ShapeItem.cpp
+    src/BitmapItem.cpp
     src/CanvasScene.cpp
     src/CanvasView.cpp
 )

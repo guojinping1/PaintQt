@@ -29,6 +29,11 @@ qt_add_resources(APP "app_icons"
         icons/trash.svg
         icons/import.svg
         icons/save.svg
+        icons/image.svg
+        icons/gray.svg
+        icons/edge.svg
+        icons/wand.svg
+        icons/reset.svg
 )
 
 target_link_libraries(APP PRIVATE
@@ -39,5 +44,11 @@ target_link_libraries(APP PRIVATE
     Qt6::Svg                     # SVG 图标要靠它加载
 )
 
-# 有位图库时把 Qt 和 OpenCV 的运行时 DLL 拷到 exe 旁边，双击即可运行
+# 位图功能只有在找到 OpenCV 时才编进来。
+# 没装 OpenCV 时 APP 照常编译运行，只是左侧不显示「位图」那一栏。
+if(OpenCV_FOUND)
+    target_link_libraries(APP PRIVATE bitmap)
+    target_compile_definitions(APP PRIVATE PAINTQT_HAVE_OPENCV)
+endif()
+
 paintqt_deploy_runtime(APP)
