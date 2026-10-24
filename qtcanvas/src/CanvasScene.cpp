@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "BitmapItem.h"
 #include "ShapeItem.h"
 
 namespace {
@@ -27,7 +28,7 @@ CanvasScene::CanvasScene(QObject* parent)
 void CanvasScene::setTool(Tool t)
 {
     m_tool = t;
-    clearSelection();               // 换工具就取消选中，避免节点手柄干扰
+    clearSelection();               // 换工具就取消选中，避免手柄干扰
 }
 
 void CanvasScene::setPenWidth(int w)
@@ -35,17 +36,53 @@ void CanvasScene::setPenWidth(int w)
     m_penWidth = qBound(1, w, 40);
 }
 
-// ---------------- 撤销 / 清空 ----------------
+// ---------------- 图元顺序表 ----------------
+
+void CanvasScene::track(QGraphicsItem* item)
+{
+    if (!item)
+        return;
+
+    m_order.append(item);
+
+    if (qgraphicsitem_cast<ShapeItem*>(item))
+        ++m_shapeCount;
+}
+
+void CanvasScene::untrack(QGraphicsItem* item)
+{
+    if (!item)
+        return;
+
+    if (m_order.removeOne(item))
+    {
+        if (qgraphicsitem_cast<ShapeItem*>(item))
+            --m_shapeCount;
+    }
+}
+
+void CanvasScene::emitCount()
+{
+    emit countChanged(m_shapeCount);
+}
+
+// ---------------- 撤销 / 清空 / 删除 ----------------
 
 bool CanvasScene::undo()
 {
-    if (m_items.isEmpty())
+    if (m_order.isEmpty())
     {
-        emit statusMessage(QStringLiteral("没有可以撤销的图形"));
+        emit statusMessage(QStringLiteral("没有可以撤销的内容"));
         return false;
     }
 
-    ShapeItem* item = m_items.takeLast();
+    QGraphicsItem* item = m_order.takeLast();
+
+    if (qgraphicsitem_cast<ShapeItem*>(item))
+        --m_shapeCount;
+    if (item == m_lastBitmap)
+        m_lastBitmap = nullptr;
+
     removeItem(item);
     delete item;
 
@@ -56,17 +93,20 @@ bool CanvasScene::undo()
 
 void CanvasScene::clearAll()
 {
-    const int n = int(m_items.size());
+    const int n = int(m_order.size());
 
-    for (ShapeItem* item : m_items)
+    for (QGraphicsItem* item : m_order)
     {
         removeItem(item);
         delete item;
     }
-    m_items.clear();
+
+    m_order.clear();
+    m_shapeCount = 0;
+    m_lastBitmap = nullptr;
 
     emitCount();
-    emit statusMessage(QStringLiteral("已清空 %1 个图形").arg(n));
+    emit statusMessage(QStringLiteral("已清空 %1 个图元").arg(n));
 }
 
 int CanvasScene::deleteSelected()
@@ -76,23 +116,61 @@ int CanvasScene::deleteSelected()
 
     for (QGraphicsItem* item : sel)
     {
-        auto* si = qgraphicsitem_cast<ShapeItem*>(item);
-        if (!si)
-            continue;
+        if (item == m_lastBitmap)
+            m_lastBitmap = nullptr;
 
-        m_items.removeOne(si);
-        removeItem(si);
-        delete si;
+        untrack(item);
+        removeItem(item);
+        delete item;
         ++n;
     }
 
     if (n > 0)
     {
         emitCount();
-        emit statusMessage(QStringLiteral("已删除 %1 个图形").arg(n));
+        emit statusMessage(QStringLiteral("已删除 %1 个图元").arg(n));
     }
 
     return n;
+}
+
+// ---------------- 位图 ----------------
+
+BitmapItem* CanvasScene::addBitmap(const QImage& img)
+{
+    if (img.isNull())
+        return nullptr;
+
+    auto* item = new BitmapItem(img);
+
+    // 摆到画布中央
+    const QRectF area = sceneRect();
+    item->setPos(area.center() - QPointF(img.width() / 2.0, img.height() / 2.0));
+
+    addItem(item);
+    track(item);
+    m_lastBitmap = item;
+
+    // 选中它，这样接着点「灰度」「边缘」就是作用在它上面
+    clearSelection();
+    item->setSelected(true);
+
+    emitCount();
+    emit statusMessage(QStringLiteral("已打开位图 %1×%2").arg(img.width()).arg(img.height()));
+    return item;
+}
+
+BitmapItem* CanvasScene::currentBitmap() const
+{
+    // 优先用选中的那张
+    for (QGraphicsItem* item : selectedItems())
+    {
+        if (auto* b = qgraphicsitem_cast<BitmapItem*>(item))
+            return b;
+    }
+
+    // 没选中就用最后打开的那张
+    return m_lastBitmap;
 }
 
 // ---------------- 导入外部图形 ----------------
@@ -151,22 +229,53 @@ void CanvasScene::addShapes(const std::vector<draw::Shape>& shapes, bool fitToVi
     {
         auto* item = new ShapeItem(s);
         addItem(item);
-        m_items.append(item);
+        track(item);
     }
 
     emitCount();
 }
 
-void CanvasScene::emitCount()
-{
-    emit countChanged(int(m_items.size()));
-}
-
-// ---------------- 鼠标：画图 ----------------
+// ---------------- 鼠标：画图 / 魔棒 ----------------
 
 void CanvasScene::mousePressEvent(QGraphicsSceneMouseEvent* e)
 {
-    // 选择工具交给基类，负责选中和整体拖动
+    // ---- 魔棒：点一下取种子点 ----
+    if (m_tool == Tool::Wand)
+    {
+        if (e->button() != Qt::LeftButton)
+        {
+            QGraphicsScene::mousePressEvent(e);
+            return;
+        }
+
+        BitmapItem* hit = nullptr;
+        for (QGraphicsItem* item : items(e->scenePos()))
+        {
+            if (auto* b = qgraphicsitem_cast<BitmapItem*>(item))
+            {
+                hit = b;
+                break;
+            }
+        }
+
+        if (hit)
+        {
+            clearSelection();
+            hit->setSelected(true);
+            m_lastBitmap = hit;
+
+            emit wandPicked(hit, hit->toImagePixel(e->scenePos()));
+        }
+        else
+        {
+            emit statusMessage(QStringLiteral("魔棒：请点在位图上"));
+        }
+
+        e->accept();
+        return;
+    }
+
+    // ---- 选择工具交给基类，负责选中和整体拖动 ----
     if (m_tool == Tool::Select || e->button() != Qt::LeftButton)
     {
         QGraphicsScene::mousePressEvent(e);
@@ -333,9 +442,8 @@ void CanvasScene::finishShape(const QPointF& p)
 
     if (keep)
     {
-        m_items.append(m_temp);
-        emitCount();
-        emit statusMessage(QStringLiteral("已添加图形，共 %1 个").arg(int(m_items.size())));
+        track(m_temp);
+        emit statusMessage(QStringLiteral("已添加图形，共 %1 个").arg(m_shapeCount));
     }
     else
     {

@@ -22,9 +22,14 @@
 
 #include <functional>
 
+#include "BitmapItem.h"
 #include "CanvasScene.h"
 #include "CanvasView.h"
 #include "SvgImport.h"
+
+#ifdef PAINTQT_HAVE_OPENCV
+#include "BitmapOps.h"
+#endif
 
 // ---------------------------------------------------------------------------
 // 界面样式。配色和圆角都集中在这里，控件本身不带视觉样式。
@@ -67,7 +72,7 @@ QToolButton#Tool:checked {
 QToolButton#Action {
     border: 1px solid #DCE1E9;
     border-radius: 7px;
-    padding: 6px 8px;
+    padding: 5px 8px;
     background: #FFFFFF;
     color: #3C4653;
     font-size: 12px;
@@ -128,6 +133,8 @@ QString hintFor(CanvasScene::Tool t)
         return QStringLiteral("按住鼠标左键自由绘制。");
     case CanvasScene::Tool::Eraser:
         return QStringLiteral("按住鼠标左键擦除，松开结束。");
+    case CanvasScene::Tool::Wand:
+        return QStringLiteral("魔棒：在位图上点一下，会把颜色相近的区域保留下来，其余变透明。");
     default:
         return QStringLiteral("在画布上按住左键拖拽即可绘制。");
     }
@@ -156,7 +163,7 @@ public:
         setCentralWidget(splitter);
 
         setWindowTitle(QStringLiteral("画图板 - Qt 版"));
-        resize(1200, 780);
+        resize(1200, 820);
 
         m_countLabel = new QLabel(this);
         m_zoomLabel = new QLabel(this);
@@ -177,6 +184,29 @@ public:
         {
             m_zoomLabel->setText(QStringLiteral("缩放：%1%").arg(int(z * 100)));
         });
+
+#ifdef PAINTQT_HAVE_OPENCV
+        // 魔棒被点了：拿到种子点，做抠图
+        connect(m_scene, &CanvasScene::wandPicked, this,
+                [this](BitmapItem* item, const QPoint& pixel)
+        {
+            if (!item)
+                return;
+
+            QRect bounds;
+            const QImage cut = bitmap::magicWand(item->current(), pixel, m_wandTolerance, &bounds);
+            item->applyFilter(cut);
+
+            selectTool(int(CanvasScene::Tool::Select));
+
+            statusBar()->showMessage(
+                QStringLiteral("已抠图：种子点 (%1, %2)，容差 %3，选区 %4×%5")
+                    .arg(pixel.x()).arg(pixel.y())
+                    .arg(m_wandTolerance)
+                    .arg(bounds.width()).arg(bounds.height()),
+                6000);
+        });
+#endif
 
         m_countLabel->setText(QStringLiteral("图形：0"));
         m_zoomLabel->setText(QStringLiteral("缩放：100%"));
@@ -217,6 +247,25 @@ public:
         statusBar()->showMessage(msg, 6000);
     }
 
+    // 供命令行参数调用：直接打开一张位图
+    void openBitmapFile(const QString& path)
+    {
+#ifdef PAINTQT_HAVE_OPENCV
+        const QImage img(path);
+        if (img.isNull())
+        {
+            QMessageBox::warning(this, QStringLiteral("打开失败"),
+                                 QStringLiteral("无法读取这张图片：\n%1").arg(path));
+            return;
+        }
+
+        m_scene->addBitmap(img);
+        m_view->fitPage();
+#else
+        Q_UNUSED(path);
+#endif
+    }
+
 private:
     // ------------------------------ 左侧功能区 ------------------------------
 
@@ -230,7 +279,7 @@ private:
 
         auto* v = new QVBoxLayout(panel);
         v->setContentsMargins(12, 12, 12, 12);
-        v->setSpacing(10);
+        v->setSpacing(8);
 
         // —— 标题 ——
         auto* title = new QLabel(QStringLiteral("画图板"), panel);
@@ -261,7 +310,7 @@ private:
         };
 
         auto* grid = new QGridLayout();
-        grid->setSpacing(5);
+        grid->setSpacing(4);
         grid->setContentsMargins(0, 0, 0, 0);
 
         m_toolGroup = new QButtonGroup(panel);
@@ -276,7 +325,7 @@ private:
             btn->setIconSize(QSize(24, 24));
             btn->setToolTip(t.tip);
             btn->setCheckable(true);
-            btn->setFixedSize(44, 44);
+            btn->setFixedSize(42, 42);
 
             m_toolGroup->addButton(btn, int(t.tool));
             grid->addWidget(btn, i / 3, i % 3);
@@ -292,7 +341,7 @@ private:
         v->addWidget(makeSectionTitle(QStringLiteral("颜色"), panel));
 
         auto* colorRow = new QHBoxLayout();
-        colorRow->setSpacing(6);
+        colorRow->setSpacing(4);
         colorRow->setContentsMargins(0, 0, 0, 0);
 
         const unsigned palette[] = { 0x000000, 0xDC3C3C, 0xF09600, 0x3CAA3C, 0x1E78DC, 0x8C50C8 };
@@ -308,7 +357,7 @@ private:
             btn->setIcon(swatchIcon(c));
             btn->setIconSize(QSize(20, 20));
             btn->setCheckable(true);
-            btn->setFixedSize(28, 28);
+            btn->setFixedSize(27, 27);
             btn->setToolTip(QStringLiteral("#%1").arg(c, 6, 16, QLatin1Char('0')).toUpper());
 
             m_colorGroup->addButton(btn, ci++);
@@ -322,13 +371,40 @@ private:
         });
 
         v->addLayout(colorRow);
+
+#ifdef PAINTQT_HAVE_OPENCV
+        // —— 位图（需要 OpenCV）——
+        v->addWidget(makeSeparator(panel));
+        v->addWidget(makeSectionTitle(QStringLiteral("位图"), panel));
+
+        v->addWidget(makeActionButton(panel, "image", QStringLiteral("打开位图"),
+                                      QStringLiteral("把一张图片放到画布上"),
+                                      [this] { openBitmap(); }));
+
+        v->addWidget(makeActionButton(panel, "gray", QStringLiteral("转灰度"),
+                                      QStringLiteral("把选中的位图转成灰度"),
+                                      [this] { applyBitmapFilter(0); }));
+
+        v->addWidget(makeActionButton(panel, "edge", QStringLiteral("边缘检测"),
+                                      QStringLiteral("对选中的位图做 Canny 边缘检测"),
+                                      [this] { applyBitmapFilter(1); }));
+
+        v->addWidget(makeActionButton(panel, "wand", QStringLiteral("魔棒抠图"),
+                                      QStringLiteral("点一下位图上要保留的区域，其余变透明"),
+                                      [this] { startWand(); }));
+
+        v->addWidget(makeActionButton(panel, "reset", QStringLiteral("还原原图"),
+                                      QStringLiteral("把位图恢复成刚打开时的样子"),
+                                      [this] { resetBitmap(); }));
+#endif
+
         v->addWidget(makeSeparator(panel));
 
         // —— 操作 ——
         v->addWidget(makeSectionTitle(QStringLiteral("操作"), panel));
 
         v->addWidget(makeActionButton(panel, "undo", QStringLiteral("撤销"),
-                                      QStringLiteral("撤销上一个图形（Ctrl+Z）"),
+                                      QStringLiteral("撤销上一个图元（Ctrl+Z）"),
                                       [this] { m_scene->undo(); }));
 
         v->addWidget(makeActionButton(panel, "trash", QStringLiteral("清空"),
@@ -391,11 +467,81 @@ private:
         m_scene->setTool(tool);
         m_view->setSelectMode(tool == CanvasScene::Tool::Select);   // 只有选择工具开框选
 
+        // 魔棒不在工具按钮组里，所以可能取不到按钮（返回 nullptr 就跳过）
         if (QAbstractButton* b = m_toolGroup->button(id))
             b->setChecked(true);
 
         m_hint->setText(hintFor(tool));
     }
+
+    // ------------------------------ 位图功能 ------------------------------
+
+#ifdef PAINTQT_HAVE_OPENCV
+
+    void openBitmap()
+    {
+        const QString file = QFileDialog::getOpenFileName(
+            this,
+            QStringLiteral("打开位图"),
+            QString(),
+            QStringLiteral("图片文件 (*.png *.jpg *.jpeg *.bmp *.gif *.tif *.tiff);;所有文件 (*)"));
+
+        if (file.isEmpty())
+            return;
+
+        openBitmapFile(file);
+    }
+
+    // which: 0 = 灰度, 1 = 边缘检测
+    void applyBitmapFilter(int which)
+    {
+        BitmapItem* bmp = m_scene->currentBitmap();
+        if (!bmp)
+        {
+            statusBar()->showMessage(QStringLiteral("请先打开一张位图"), 4000);
+            return;
+        }
+
+        // 注意：滤镜都基于**原图**算，所以连着点几次不会一层层叠加变糊
+        const QImage result = (which == 0)
+            ? bitmap::toGray(bmp->source())
+            : bitmap::edgeDetect(bmp->source(), 50, 150);
+
+        bmp->applyFilter(result);
+
+        statusBar()->showMessage(
+            (which == 0) ? QStringLiteral("已转灰度（基于原图计算，可点「还原原图」回到初始状态）")
+                         : QStringLiteral("已做边缘检测（基于原图计算，可点「还原原图」回到初始状态）"),
+            6000);
+    }
+
+    void startWand()
+    {
+        if (!m_scene->currentBitmap())
+        {
+            statusBar()->showMessage(QStringLiteral("请先打开一张位图"), 4000);
+            return;
+        }
+
+        selectTool(int(CanvasScene::Tool::Wand));
+        statusBar()->showMessage(
+            QStringLiteral("魔棒：在位图上点一下要**保留**的区域，其余会变透明"), 8000);
+    }
+
+    void resetBitmap()
+    {
+        BitmapItem* bmp = m_scene->currentBitmap();
+        if (!bmp)
+        {
+            statusBar()->showMessage(QStringLiteral("请先打开一张位图"), 4000);
+            return;
+        }
+
+        bmp->resetToSource();
+        statusBar()->showMessage(QStringLiteral("已还原为原图"), 4000);
+    }
+
+#endif // PAINTQT_HAVE_OPENCV
 
     // ------------------------------ 文件操作 ------------------------------
 
@@ -450,6 +596,10 @@ private:
     QLabel*       m_hint = nullptr;
     QLabel*       m_countLabel = nullptr;
     QLabel*       m_zoomLabel = nullptr;
+
+#ifdef PAINTQT_HAVE_OPENCV
+    int m_wandTolerance = 40;       // 魔棒颜色容差
+#endif
 };
 
 int main(int argc, char* argv[])
@@ -461,10 +611,16 @@ int main(int argc, char* argv[])
     w.show();
     w.fitPage();        // 启动时先让整张画布可见
 
-    // 支持命令行直接带一个 SVG 打开（也方便自动化测试）
+    // 命令行可以带一个文件：.svg 当矢量导入，其他当位图打开
     const QStringList args = QCoreApplication::arguments();
     if (args.size() > 1)
-        w.importFile(args[1]);
+    {
+        const QString path = args[1];
+        if (path.endsWith(QStringLiteral(".svg"), Qt::CaseInsensitive))
+            w.importFile(path);
+        else
+            w.openBitmapFile(path);
+    }
 
     return app.exec();
 }
