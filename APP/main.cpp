@@ -25,6 +25,7 @@
 #include "BitmapItem.h"
 #include "CanvasScene.h"
 #include "CanvasView.h"
+#include "DxfImport.h"
 #include "SvgImport.h"
 
 #ifdef PAINTQT_HAVE_OPENCV
@@ -247,6 +248,34 @@ public:
         statusBar()->showMessage(msg, 6000);
     }
 
+    // 供命令行参数调用：直接打开一个 DXF（CAD 图纸）
+    void importDxfFile(const QString& path)
+    {
+        const dxfio::Result r = dxfio::loadFile(path);
+
+        if (!r.ok || r.shapes.empty())
+        {
+            QMessageBox::warning(this, QStringLiteral("导入失败"),
+                                 r.error.isEmpty()
+                                     ? QStringLiteral("这个 DXF 里没有可导入的线条")
+                                     : r.error);
+            return;
+        }
+
+        m_scene->addShapes(r.shapes, true);
+        m_view->fitPage();
+
+        QString msg = QStringLiteral("已导入 %1 个图形").arg(int(r.shapes.size()));
+        if (r.blocks > 0)
+            msg += QStringLiteral("，展开 %1 个图块").arg(r.blocks);
+        if (r.curves > 0)
+            msg += QStringLiteral("，%1 条曲线离散为折线").arg(r.curves);
+        if (r.skipped > 0)
+            msg += QStringLiteral("，跳过 %1 个不支持的元素").arg(r.skipped);
+
+        statusBar()->showMessage(msg, 8000);
+    }
+
     // 供命令行参数调用：直接打开一张位图
     void openBitmapFile(const QString& path)
     {
@@ -415,6 +444,10 @@ private:
                                       QStringLiteral("把 SVG 矢量图解析成可编辑的图形"),
                                       [this] { importSvg(); }));
 
+        v->addWidget(makeActionButton(panel, "dxf", QStringLiteral("导入 DXF"),
+                                      QStringLiteral("导入 CAD 图纸（直线/多段线/圆/圆弧/椭圆/图块）"),
+                                      [this] { importDxf(); }));
+
         v->addWidget(makeActionButton(panel, "save", QStringLiteral("保存 PNG"),
                                       QStringLiteral("把画布导出成 PNG 图片（Ctrl+S）"),
                                       [this] { savePng(); }));
@@ -557,6 +590,18 @@ private:
             importFile(file);
     }
 
+    void importDxf()
+    {
+        const QString file = QFileDialog::getOpenFileName(
+            this,
+            QStringLiteral("选择 DXF 文件"),
+            QString(),
+            QStringLiteral("DXF 图纸 (*.dxf);;所有文件 (*)"));
+
+        if (!file.isEmpty())
+            importDxfFile(file);
+    }
+
     void savePng()
     {
         const QString file = QFileDialog::getSaveFileName(
@@ -611,13 +656,16 @@ int main(int argc, char* argv[])
     w.show();
     w.fitPage();        // 启动时先让整张画布可见
 
-    // 命令行可以带一个文件：.svg 当矢量导入，其他当位图打开
+    // 命令行可以带一个文件：按扩展名分派
+    //   .svg → 矢量导入；.dxf → CAD 图纸导入；其余当位图打开
     const QStringList args = QCoreApplication::arguments();
     if (args.size() > 1)
     {
         const QString path = args[1];
         if (path.endsWith(QStringLiteral(".svg"), Qt::CaseInsensitive))
             w.importFile(path);
+        else if (path.endsWith(QStringLiteral(".dxf"), Qt::CaseInsensitive))
+            w.importDxfFile(path);
         else
             w.openBitmapFile(path);
     }
