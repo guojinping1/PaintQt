@@ -34,12 +34,14 @@ qt_add_resources(APP "app_icons"
         icons/edge.svg
         icons/wand.svg
         icons/reset.svg
+        icons/dxf.svg
 )
 
 target_link_libraries(APP PRIVATE
     draw
     qtcanvas
     svgio
+    dxfio
     Qt6::Widgets
     Qt6::Svg                     # SVG 图标要靠它加载
 )

@@ -53,11 +53,20 @@ PaintQt/
 │   ├─ include/SvgImport.h
 │   └─ src/SvgImport.cpp
 │
+├─ dxfio/                  【静态库④】DXF 解析（CAD 图纸）
+│   ├─ include/DxfImport.h
+│   └─ src/DxfImport.cpp
+│
+├─ bitmap/                 【静态库⑤】位图处理（OpenCV，可选）
+│   ├─ include/BitmapOps.h     对外只暴露 QImage
+│   ├─ src/BitmapOps.cpp       滤镜 + 魔棒抠图，OpenCV 全藏在这里
+│   └─ src/SelfTest.cpp        不开界面的自测程序（10 项）
+│
 ├─ APP/                    【主程序】左右分栏界面
 │   ├─ main.cpp
-│   └─ icons/*.svg             左侧功能区 12 个图标
+│   └─ icons/*.svg             左侧功能区 18 个图标
 │
-├─ samples/shapes.svg      测试用的 SVG
+├─ samples/                测试用矢量文件（shapes.svg / test.dxf）
 └─ docs/                   说明文档 + 运行截图
 ```
 
@@ -66,6 +75,8 @@ PaintQt/
 ```
 APP ──► qtcanvas ──► draw
   ├───► svgio   ──► draw
+  ├───► dxfio   ──► draw
+  ├───► bitmap  ──► OpenCV（可选，没装就整块跳过）
   └───► Qt6::Widgets / Qt6::Svg
 ```
 
@@ -129,6 +140,7 @@ D:\qt\6.10.2\mingw_64\bin\windeployqt.exe build\mingw-debug\bin\APP.exe
 | **撤销** | `Ctrl+Z`，或左侧「撤销」按钮 |
 | **清空** | 左侧「清空」按钮 |
 | **导入 SVG** | 左侧「导入 SVG」按钮；解析成可编辑图形后自动缩放到画布居中 |
+| **导入 DXF** | 左侧「导入 DXF」按钮；支持 LINE / LWPOLYLINE / POLYLINE / CIRCLE / ARC / ELLIPSE / INSERT，按图层 ACI 索引色着色 |
 | **打开位图** | 左侧「打开位图」按钮，支持 PNG / JPG / BMP / GIF / TIF；图片放到画布中央并自动选中 |
 | **位图滤镜** | 「转灰度」「边缘检测」都基于**原图**计算，反复点不会越叠越糊 |
 | **魔棒抠图** | 点「魔棒抠图」→ 在位图上点一下要**保留**的区域，颜色相近的留下、其余变透明（容差默认 40） |

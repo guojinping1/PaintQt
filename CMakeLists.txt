@@ -18,11 +18,31 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Svg)
 qt_standard_project_setup()
 
 # ---- OpenCV（可选）----
-# 装上 OpenCV 后会自动启用 opencv/ 子项目，实现位图编辑和抠图。
+# 装上 OpenCV 后会自动启用 bitmap/ 子项目，实现位图编辑和抠图。
 # 没装时只给一条提示，不影响其余功能编译。
+#
+# 【版本约定】全组统一用 OpenCV 4.14（Windows 官方预编译包，MSVC 版本）。
+# 这条要求来自技术指导会议「统一约定 OpenCV 库的使用版本」，理由：
+#   · 官方预编译包只有 MSVC 版，MinGW 链不上（.lib 格式 + 名字改编不兼容）
+#   · opencv_world4xx.lib 的文件名里带版本号，换版本就要同步改链接
+#   · 团队里有人用 3.x 有人用 4.x 时，cv::floodFill 等函数的行为差异会导致
+#     "我这能跑你那崩" 这类难查的问题
+#
+# 所以这里显式要求 4.x，并且建议 4.10 以上（我们实测的是 4.14.0）。
+# 版本对不上时给一条醒目的警告，而不是等到运行时报找不到 DLL。
+set(PAINTQT_OPENCV_MIN_VERSION "4.10")
+
 find_package(OpenCV QUIET)
 if(OpenCV_FOUND)
     message(STATUS "找到 OpenCV ${OpenCV_VERSION}：${OpenCV_DIR}")
+
+    if(OpenCV_VERSION VERSION_LESS ${PAINTQT_OPENCV_MIN_VERSION})
+        message(WARNING
+            "OpenCV 版本过低：当前 ${OpenCV_VERSION}，本项目约定不低于 ${PAINTQT_OPENCV_MIN_VERSION}。\n"
+            "位图功能仍会编译，但可能与团队其他成员的行为不一致。")
+    else()
+        message(STATUS "OpenCV 版本符合约定（>= ${PAINTQT_OPENCV_MIN_VERSION}）")
+    endif()
 else()
     message(STATUS "未找到 OpenCV —— 位图编辑/抠图功能将不参与编译")
 endif()
@@ -71,6 +91,7 @@ endfunction()
 add_subdirectory(draw)      # 图形数据静态库（不依赖任何界面框架）
 add_subdirectory(qtcanvas)  # Qt 画布封装静态库（QGraphicsItem 自定义图元）
 add_subdirectory(svgio)     # SVG 解析静态库
+add_subdirectory(dxfio)     # DXF 解析静态库
 
 # 位图处理静态库（依赖 OpenCV）。没装 OpenCV 时整块跳过，
 # 其余功能仍能正常编译运行。
